@@ -1,3 +1,6 @@
 
-rootProject.name = "diskt"
-
+rootProject.name = "discoin"
+include("kordrest")
+include("kordcommon")
+include("kordgateway")
+include("solana")
