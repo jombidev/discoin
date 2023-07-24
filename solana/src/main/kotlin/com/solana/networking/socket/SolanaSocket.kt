@@ -2,22 +2,20 @@ package com.solana.networking.socket
 
 import com.solana.api.AccountInfo
 import com.solana.api.ProgramAccountSerialized
-import com.solana.models.buffer.*
+import com.solana.models.buffer.AccountInfoData
 import com.solana.networking.*
 import com.solana.networking.serialization.serializers.base64.BorshAsBase64JsonArraySerializer
-import com.solana.networking.socket.models.*
+import com.solana.networking.socket.models.LogsNotification
+import com.solana.networking.socket.models.SignatureNotification
+import com.solana.networking.socket.models.SocketMethod
+import com.solana.networking.socket.models.SocketResponse
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
-import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.plugins.logging.*
 import io.ktor.client.plugins.websocket.*
 import io.ktor.client.request.*
-import io.ktor.network.sockets.*
-import io.ktor.serialization.kotlinx.*
-import io.ktor.serialization.kotlinx.json.*
-import io.ktor.utils.io.*
 import io.ktor.utils.io.CancellationException
 import io.ktor.websocket.*
-import kotlinx.atomicfu.update
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
@@ -27,27 +25,34 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.nullable
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.*
-import okio.ByteString
 import org.slf4j.LoggerFactory
 import java.util.concurrent.Executors
+import kotlin.io.encoding.ExperimentalEncodingApi
 
 sealed class SolanaSocketError : Exception() {
-    object disconnected : SolanaSocketError()
-    object couldNotSerialize : SolanaSocketError()
-    object couldNotWrite : SolanaSocketError()
+    data object Disconnected : SolanaSocketError()
+    data object CouldNotSerialize : SolanaSocketError()
+    data object CouldNotWrite : SolanaSocketError()
 }
 
-interface SolanaSocketEventsDelegate {
-    fun connected()
-    fun accountNotification(notification: SocketResponse<AccountInfo<AccountInfoData?>>)
-    fun programNotification(notification: SocketResponse<ProgramAccountSerialized<AccountInfo<AccountInfoData?>>>)
-    fun signatureNotification(notification: SocketResponse<SignatureNotification>)
-    fun logsNotification(notification: SocketResponse<LogsNotification>)
-    fun unsubscribed(id: String)
-    fun subscribed(socketId: Int, id: String)
-    fun disconnecting(code: Int, reason: String)
-    fun disconnected(code: Int, reason: String)
-    fun error(error: Exception)
+abstract class SolanaSocketEventsDelegate {
+    open fun start() {}
+    open fun stop() {}
+    open fun accountNotification(notification: SocketResponse<AccountInfo<AccountInfoData?>>) {}
+    open fun programNotification(notification: SocketResponse<ProgramAccountSerialized<AccountInfo<AccountInfoData?>>>) {}
+    open fun signatureNotification(notification: SocketResponse<SignatureNotification>) {}
+    open fun logsNotification(notification: SocketResponse<LogsNotification>) {}
+    open fun unsubscribed(id: String) {}
+    open fun subscribed(socketId: Int, id: String) {}
+    open fun error(error: Exception) {}
+}
+
+private val LOGGER = LoggerFactory.getLogger(SolanaSocket::class.java)
+
+
+private val json = Json {
+    encodeDefaults = true
+    ignoreUnknownKeys = true
 }
 
 class SolanaSocket(
@@ -56,38 +61,50 @@ class SolanaSocket(
         install(WebSockets) {
             pingInterval = 30_000
         }
-        install(ContentNegotiation) {
-            json()
-        }
     },
 ) {
-    private val LOGGER = LoggerFactory.getLogger(SolanaSocket::class.java)
     private var socket: DefaultClientWebSocketSession? = null
     private var delegate: SolanaSocketEventsDelegate? = null
     private val pool = Executors.newCachedThreadPool().asCoroutineDispatcher()
     private var _worker: Deferred<Unit>? = null
-
-    private val json = Json {
-        encodeDefaults = true
-        ignoreUnknownKeys = true
-    }
+    private var running = false
 
     fun start(delegate: SolanaSocketEventsDelegate) {
         this.delegate = delegate
         _worker = CoroutineScope(pool).async {
+            LOGGER.info("worker started")
             while (true) {
-                socket = client.webSocketSession { url(endpoint.urlWebSocket) }
+                try {
+                    socket = client.webSocketSession { url(endpoint.urlWebSocket) }
+                    running = true
+                    LOGGER.info("connected")
+                    delegate.start()
 
-                try {
-                    readSocket()
-                } catch (e: Exception) {
-                    LOGGER.error("Error: ", e)
+                    try {
+                        readSocket()
+                    } catch (e: Exception) {
+                        LOGGER.error("Error: ", e)
+                        delegate.error(e)
+                    }
+                    running = false
+                    delegate.stop()
+                    try {
+                        handleClose()
+                    } catch (e: RuntimeException) {
+                        LOGGER.error("Stopped.")
+                        break
+                    } catch (e: Exception) {
+                        LOGGER.error("Error while closing", e)
+                        delegate.error(e)
+                    }
+                    socket = null
+                } catch (exception: Exception) {
+                    delegate.error(exception)
+                    LOGGER.error("error while open connection", exception)
+                    delay(10000L)
+                    continue
                 }
-                try {
-                    handleClose()
-                } catch (e: Exception) {
-                    LOGGER.error("Error while closing", e)
-                }
+
                 LOGGER.warn("Socket closed, trying to reconnecting...")
             }
         }
@@ -100,6 +117,10 @@ class SolanaSocket(
         } ?: return
 
         LOGGER.info("Gateway closed: {} {}", reason.code, reason.message)
+
+        when (reason.message) {
+            "USER_STOP" -> throw RuntimeException("User stop")
+        }
     }
 
     private fun <T> ReceiveChannel<T>.asFlow() = flow {
@@ -120,7 +141,7 @@ class SolanaSocket(
         }
     }
 
-    private suspend fun read(frame: Frame) {
+    private fun read(frame: Frame) {
         LOGGER.trace("Received raw frame: {}", frame)
         val text = frame.data.decodeToString()
 
@@ -201,7 +222,7 @@ class SolanaSocket(
     }
 
     suspend fun stop() {
-        socket?.close(CloseReason(1000, "forced stop"))
+        socket?.close(CloseReason(1000, "USER_STOP"))
         _worker?.cancelAndJoin()
     }
 
@@ -310,12 +331,16 @@ class SolanaSocket(
         return writeToSocket(rpcRequest)
     }
 
-    suspend fun writeToSocket(request: RpcRequest): Result<String> {
+    private suspend fun writeToSocket(request: RpcRequest): Result<String> {
         val json = json.encodeToString(RpcRequest.serializer(), request)
-        val written = try { socket?.send(json);true } catch (e: CancellationException) { false }
-        if (written) {
-            return Result.failure(SolanaSocketError.couldNotWrite)
+        val written = try {
+            socket?.send(json)
+            true
+        } catch (e: CancellationException) {
+            LOGGER.error("Cancelled", e)
+            false
         }
+        if (!written) return Result.failure(SolanaSocketError.CouldNotWrite)
         return Result.success(request.id)
     }
 }

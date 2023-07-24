@@ -405,13 +405,12 @@ public sealed class Event {
                         DiscordWebhooksUpdateData.serializer()
                     ), sequence
                 )
-                "INTERACTION_CREATE" -> InteractionCreate(
-                    decoder.decodeSerializableElement(
-                        descriptor,
-                        index,
-                        DiscordInteraction.serializer()
-                    ), sequence
-                )
+                "INTERACTION_CREATE" -> {
+                    val data = decoder.decodeSerializableElement(descriptor, index, JsonElement.serializer().nullable)
+                    jsonLogger.warn("unknown gateway event name {}, {}", name, data)
+                    // consume json elements that are unknown to us
+                    UnknownDispatchEvent(name, data, sequence)
+                }
                 "APPLICATION_COMMAND_CREATE" -> ApplicationCommandCreate(
                     decoder.decodeSerializableElement(descriptor, index, DiscordApplicationCommand.serializer()),
                     sequence
@@ -524,7 +523,7 @@ public sealed class Event {
 
                 else -> {
                     val data = decoder.decodeSerializableElement(descriptor, index, JsonElement.serializer().nullable)
-                    jsonLogger.warn("unknown gateway event name {}, {}", name, data)
+//                    jsonLogger.warn("unknown gateway event name {}, {}", name, data)
                     // consume json elements that are unknown to us
                     UnknownDispatchEvent(name, data, sequence)
                 }

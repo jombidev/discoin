@@ -93,7 +93,7 @@ data class RelationShipData(
 @Serializable
 data class RelationShipRemoveData(
     val type: RelationShipType,
-    val since: String, // lazy moment
+    val since: String? = null, // lazy moment
     val shouldNotify: OptionalBoolean = OptionalBoolean.Missing,
     val nickname: String?,
     val id: Snowflake,
