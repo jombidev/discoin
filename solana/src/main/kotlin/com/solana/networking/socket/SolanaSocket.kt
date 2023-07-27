@@ -30,9 +30,17 @@ import java.util.concurrent.Executors
 import kotlin.io.encoding.ExperimentalEncodingApi
 
 sealed class SolanaSocketError : Exception() {
-    data object Disconnected : SolanaSocketError()
-    data object CouldNotSerialize : SolanaSocketError()
-    data object CouldNotWrite : SolanaSocketError()
+    data object Disconnected : SolanaSocketError() {
+        private fun readResolve(): Any = Disconnected
+    }
+
+    data object CouldNotSerialize : SolanaSocketError() {
+        private fun readResolve(): Any = CouldNotSerialize
+    }
+
+    data object CouldNotWrite : SolanaSocketError() {
+        private fun readResolve(): Any = CouldNotWrite
+    }
 }
 
 abstract class SolanaSocketEventsDelegate {
@@ -77,13 +85,11 @@ class SolanaSocket(
                 try {
                     socket = client.webSocketSession { url(endpoint.urlWebSocket) }
                     running = true
-                    LOGGER.info("connected")
                     delegate.start()
 
                     try {
                         readSocket()
                     } catch (e: Exception) {
-                        LOGGER.error("Error: ", e)
                         delegate.error(e)
                     }
                     running = false
@@ -91,16 +97,14 @@ class SolanaSocket(
                     try {
                         handleClose()
                     } catch (e: RuntimeException) {
-                        LOGGER.error("Stopped.")
+                        LOGGER.info("Stopped. ({})", e.message)
                         break
                     } catch (e: Exception) {
-                        LOGGER.error("Error while closing", e)
                         delegate.error(e)
                     }
                     socket = null
                 } catch (exception: Exception) {
                     delegate.error(exception)
-                    LOGGER.error("error while open connection", exception)
                     delay(10000L)
                     continue
                 }

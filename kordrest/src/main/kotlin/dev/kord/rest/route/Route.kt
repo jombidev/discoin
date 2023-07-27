@@ -206,6 +206,32 @@ public sealed class Route<T>(
             ListSerializer(DiscordMessage.serializer())
         )
 
+    /*
+    fetch("https://discord.com/api/v9/channels/1065303544061763584/messages?limit=50", {
+  "headers": {
+    "accept": "**",
+    "accept-language": "ko,en-US;q=0.9",
+    "authorization": "MjkwMDQ1MTkwOTI2NzYxOTk1.GHZTS8.YjzjufWtudPsHYihSTuanqN1b4SnIWF-p4B5UM",
+    "sec-ch-ua": "\"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"108\"",
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": "\"Windows\"",
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-origin",
+    "x-debug-options": "bugReporterEnabled",
+    "x-discord-locale": "en-US",
+    "x-discord-timezone": "Asia/Seoul",
+    "x-super-properties": "eyJvcyI6IldpbmRvd3MiLCJicm93c2VyIjoiRGlzY29yZCBDbGllbnQiLCJyZWxlYXNlX2NoYW5uZWwiOiJzdGFibGUiLCJjbGllbnRfdmVyc2lvbiI6IjEuMC45MDE1Iiwib3NfdmVyc2lvbiI6IjEwLjAuMjI2MjEiLCJvc19hcmNoIjoieDY0Iiwic3lzdGVtX2xvY2FsZSI6ImtvIiwiYnJvd3Nlcl91c2VyX2FnZW50IjoiTW96aWxsYS81LjAgKFdpbmRvd3MgTlQgMTAuMDsgV09XNjQpIEFwcGxlV2ViS2l0LzUzNy4zNiAoS0hUTUwsIGxpa2UgR2Vja28pIGRpc2NvcmQvMS4wLjkwMTUgQ2hyb21lLzEwOC4wLjUzNTkuMjE1IEVsZWN0cm9uLzIyLjMuMTIgU2FmYXJpLzUzNy4zNiIsImJyb3dzZXJfdmVyc2lvbiI6IjIyLjMuMTIiLCJjbGllbnRfYnVpbGRfbnVtYmVyIjoyMTQ1MTAsIm5hdGl2ZV9idWlsZF9udW1iZXIiOjM0ODk4LCJjbGllbnRfZXZlbnRfc291cmNlIjpudWxsfQ=="
+},
+"referrer": "https://discord.com/channels/945872002483388446/1065303547731775579",
+"referrerPolicy": "strict-origin-when-cross-origin",
+"body": null,
+"method": "GET",
+"mode": "cors",
+"credentials": "include"
+});
+    * */
+
     public object MessageCrosspost :
         Route<DiscordMessage>(
             HttpMethod.Post,
