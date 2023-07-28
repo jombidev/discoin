@@ -52,15 +52,19 @@ suspend fun main() {
             runBlocking {
                 val prev = money
                 money = wallet.balanceUSDT(hot)!!
-                if (prev != money) senderRest.channel.createMessage(channelGot.id) {
-                    content = if (money > prev) "Received ${money - prev} USDT! (Current: $money USDT)"
-                    else "Spent ${money - prev} USDT. (Current: $money USDT)"
+                try {
+                    if (prev != money) senderRest.channel.createMessage(channelGot.id) {
+                        content = if (money > prev) "Received ${money - prev} USDT! (Current: $money USDT)"
+                        else "Spent ${money - prev} USDT. (Current: $money USDT)"
+                    }
+                } catch (e: Exception) {
+                    LOGGER.error("got error while sending message", e)
                 }
             }
         }
 
         override fun subscribed(socketId: Int, id: String) {
-            LOGGER.info("[SUBSCRIBE]")
+            LOGGER.info("Successfully subscribed")
         }
 
         override fun start() {
